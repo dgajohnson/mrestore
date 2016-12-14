@@ -278,7 +278,6 @@ get_latest_snapshot() {
 restore_snapshot() {
   echo
   local res=$(api_post '/restoreJobs' "{ \"snapshotId\": \"$SNAPSHOT_ID\", \"delivery\": { \"methodName\": \"HTTP\", \"expirationHours\": 24, \"maxDownloads\": 1 } }")
-  echo "$res"
   if echo "$res" | grep -q "curl: ("; then
     if echo "$res" | grep -q ": 403"; then
       echo "ERROR: Ensure that this IP address is whitelisted in Cloud/Ops Manager"
