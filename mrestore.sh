@@ -11,7 +11,7 @@
 set -e
 
 MMS_API_VERSION=1.0
-OUT_DIR=.
+OUT_DIR=""
 TIMEOUT=5
 
 # -------------------------------------------------------------------------
@@ -243,7 +243,7 @@ get_latest_snapshot() {
   SNAPSHOT_ID=$(       get_val "$res" '"results",0,"id"'                         -f6 -d'"')
   local created_date=$(get_val "$res" '"results",0,"created","date"'             -f8 -d'"')
   local is_complete=$( get_val "$res" '"results",0,"complete"'                   -f2)
-
+  snapshot_time=$(echo $created_date | tr '-' "_" | tr ':' "_")
   [ "$SNAPSHOT_ID" = "" ] && echo "No snapshots found" && exit 1
   echo "Latest snapshot ID: $SNAPSHOT_ID"
   echo "Created on        : $created_date"
@@ -277,9 +277,9 @@ get_latest_snapshot() {
 
 restore_snapshot() {
   echo
-  local res=$(api_post '/restoreJobs' "{\"snapshotId\": \"$SNAPSHOT_ID\"}")
+  local res=$(api_post '/restoreJobs' "{ \"snapshotId\": \"$SNAPSHOT_ID\", \"delivery\": { \"methodName\": \"HTTP\", \"expirationHours\": 24, \"maxDownloads\": 1 } }")
+  echo "$res"
   if echo "$res" | grep -q "curl: ("; then
-    echo "$res"
     if echo "$res" | grep -q ": 403"; then
       echo "ERROR: Ensure that this IP address is whitelisted in Cloud/Ops Manager"
     else
@@ -345,6 +345,7 @@ wait_for_restore() {
 }
 
 download() {
+  [[ -z  $OUT_DIR  ]] && OUT_DIR=$snapshot_time
   echo
   echo "Downloading restore tarball(s) to $OUT_DIR/..."
   mkdir -p "$OUT_DIR"
@@ -371,5 +372,5 @@ parse_options $*
 get_cluster_info
 get_latest_snapshot
 restore_snapshot
-wait_for_restore
+  wait_for_restore
 download
