@@ -145,6 +145,9 @@ usage() {
   echo "  --api-key API_KEY        Cloud/Ops Manager API key (eg. xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
   echo "  --group-id GROUP_ID      Cloud/Ops Manager group ID   (eg. 54c64146ae9fbe3d7f32c726)"
   echo "  --cluster-id CLUSTER_ID  Cloud/Ops Manager cluster ID (eg. 54c641560cf294969781b5c3)"
+  echo "  --scp-host SCP_HOSTNAME  FQDN of server to push the archive to" 
+  echo "  --scp-user SCP_USER      LOGIN ID of the user on the SCP host" 
+  echo "  --scp-passphrase SCP_PASSPHRASE  Passphrase for the SCP key" 
   echo
   echo "Options:"
   echo "  --out-dir DIRECTORY      Download directory. Default: '$OUT_DIR'"
@@ -164,6 +167,9 @@ parse_options() {
       --group-id  ) shift; GROUP_ID=$1;;
       --cluster-id) shift; CLUSTER_ID=$1;;
       --out-dir   ) shift; OUT_DIR=$1;;
+      --scp-host   ) shift; SCP_HOSTNAME=$1;;
+      --scp-user   ) shift; SCP_USER=$1;;
+      --scp-passphrase   ) shift; SCP_USER_PASSPHRASE=$1;;
       --timeout   ) shift; TIMEOUT=$1;;
       -h|--help   ) usage; exit 0;;
       *           ) echo "Unknown option(s): $*"; exit 1;;
@@ -240,6 +246,13 @@ get_latest_snapshot() {
     exit 1
   fi
 
+  local is_complete=$( get_val "$res" '"results",0,"complete"'                   -f2)
+
+  offset=0
+  if [ "$is_complete" = "false"  ]; then
+    offset=1
+  fi
+
   SNAPSHOT_ID=$(       get_val "$res" '"results",0,"id"'                         -f6 -d'"')
   local created_date=$(get_val "$res" '"results",0,"created","date"'             -f8 -d'"')
   local is_complete=$( get_val "$res" '"results",0,"complete"'                   -f2)
@@ -277,7 +290,12 @@ get_latest_snapshot() {
 
 restore_snapshot() {
   echo
-  local res=$(api_post '/restoreJobs' "{ \"snapshotId\": \"$SNAPSHOT_ID\", \"delivery\": { \"methodName\": \"HTTP\", \"expirationHours\": 24, \"maxDownloads\": 1 } }")
+#  local res=$(api_post '/restoreJobs' "{ \"snapshotId\": \"$SNAPSHOT_ID\", \"delivery\": { \"methodName\": \"HTTP\", \"expirationHours\": 24, \"maxDownloads\": 1 } }")
+
+  [[ -z  $OUT_DIR  ]] && OUT_DIR="$(pwd)/$snapshot_time"
+  echo "out dir $OUT_DIR"
+  
+  local res=$(api_post '/restoreJobs' "{ \"snapshotId\": \"$SNAPSHOT_ID\", \"delivery\": { \"methodName\": \"SCP\", \"formatName\":\"INDIVIDUAL\", \"hostname\": \"$SCP_HOSTNAME\", \"port\": 22, \"username\": \"$SCP_USER\" , \"passwordTypeName\": \"SSH_KEY\" , \"password\": \"$SCP_USER_PASSPHRASE\" , \"targetDirectory\": \"$OUT_DIR\" } }")
   if echo "$res" | grep -q "curl: ("; then
     if echo "$res" | grep -q ": 403"; then
       echo "ERROR: Ensure that this IP address is whitelisted in Cloud/Ops Manager"
@@ -371,5 +389,8 @@ parse_options $*
 get_cluster_info
 get_latest_snapshot
 restore_snapshot
+if [ -z $SCP_HOSTNAME ]; then
   wait_for_restore
 download
+fi
+
